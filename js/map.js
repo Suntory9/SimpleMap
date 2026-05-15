@@ -24,7 +24,7 @@
     navStack: [],
     currentIndex: -1,
     geoCache: new Map(),
-    showHighways: true,
+    showHighways: false,
     loading: false,
     townshipGeoCache: new Map()
   };
