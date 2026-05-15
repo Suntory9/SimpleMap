@@ -59,6 +59,7 @@
     return l || '';
   }
 
+  // District→township is handled by drillDownToTownship, not drillDown
   function canDrill(lv) {
     return lv === 'province' || lv === 'city' || lv === 'district';
   }
