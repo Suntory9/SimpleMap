@@ -254,24 +254,38 @@
     if (state.townshipGeoCache.has(countyName)) {
       return state.townshipGeoCache.get(countyName);
     }
-    var query = '[out:json][timeout:30];' +
+    var query = '[out:json][timeout:90];' +
       'area["name"="' + escapeOverpass(countyName) + '"][admin_level=6][boundary=administrative];' +
       'rel[admin_level=8][boundary=administrative](area);' +
       'out geom;';
-    var resp = await fetch(CONFIG.OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      body: query,
-      referrerPolicy: 'no-referrer'
-    });
-    if (!resp.ok) throw new Error('Overpass HTTP ' + resp.status);
-    var data = await resp.json();
-    var geoJSON = overpassToGeoJSON(data);
-    if (geoJSON.features.length === 0) {
-      throw new Error('No townships found for ' + countyName);
+
+    var controller = new AbortController();
+    var to = setTimeout(function () { controller.abort(); }, 100000);
+
+    try {
+      var resp = await fetch(CONFIG.OVERPASS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: query,
+        referrerPolicy: 'no-referrer',
+        signal: controller.signal
+      });
+      clearTimeout(to);
+      if (!resp.ok) throw new Error('Overpass HTTP ' + resp.status);
+      var data = await resp.json();
+      var geoJSON = overpassToGeoJSON(data);
+      if (geoJSON.features.length === 0) {
+        throw new Error('No townships found for ' + countyName);
+      }
+      state.townshipGeoCache.set(countyName, geoJSON);
+      return geoJSON;
+    } catch (e) {
+      clearTimeout(to);
+      if (e.name === 'AbortError') {
+        throw new Error('Overpass query timed out for ' + countyName);
+      }
+      throw e;
     }
-    state.townshipGeoCache.set(countyName, geoJSON);
-    return geoJSON;
   }
 
   // ---------- ECharts option builder ----------
@@ -462,7 +476,14 @@
       updateBreadcrumb();
       fadeInfoTip();
     } catch (e) {
-      alert('"' + name + '" 暂无乡镇级数据。\nOSM 尚未覆盖该区域的乡镇边界。');
+      var msg = e.message || '';
+      if (msg.indexOf('timed out') >= 0) {
+        alert('"' + name + '" 查询超时。\nOverpass 服务器繁忙，请稍后重试。');
+      } else if (msg.indexOf('No townships') >= 0) {
+        alert('"' + name + '" 暂无乡镇级数据。\nOSM 尚未覆盖该区域的乡镇边界。');
+      } else {
+        alert('"' + name + '" 查询失败。\n' + (msg || '请检查网络后重试。'));
+      }
       console.error('Township drill failed:', e);
     } finally {
       hideLoading();
