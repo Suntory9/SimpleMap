@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中国行政区划地图</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+
+  <!-- Header -->
+  <header id="header">
+    <span class="title">🗺 中国行政区划</span>
+
+    <nav id="breadcrumb">
+      <span class="breadcrumb-current">加载中...</span>
+    </nav>
+
+    <div id="toolbar">
+      <button id="back-btn" class="toolbar-btn" onclick="ChinaMap.goBack()" title="返回上一级">
+        ← 返回
+      </button>
+      <button id="highway-toggle" class="toolbar-btn active" onclick="ChinaMap.toggleHighways()" title="显示/隐藏国道">
+        国道: 开
+      </button>
+      <button class="toolbar-btn" onclick="ChinaMap.goToLevel(0)" title="回到全国视图">
+        🏠 全国
+      </button>
+    </div>
+  </header>
+
+  <!-- Map -->
+  <div id="map-container"></div>
+
+  <!-- Loading -->
+  <div id="loading-overlay" style="display:flex">
+    <div class="spinner"></div>
+    <div class="text">加载地图数据...</div>
+  </div>
+
+  <!-- Bottom hint -->
+  <div id="info-tip">点击省级区域下钻到市，再点击市级下钻到县 &nbsp;|&nbsp; 滚轮缩放 &nbsp;|&nbsp; 拖拽平移</div>
+
+  <!-- Scripts -->
+  <script src="js/highways.js"></script>
+  <script src="js/map.js"></script>
+  <script>
+    ChinaMap.init('map-container');
+  </script>
+
+</body>
+</html>
