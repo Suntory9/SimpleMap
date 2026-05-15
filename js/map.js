@@ -54,15 +54,20 @@
   function getLevel(gj) {
     if (!gj || !gj.features || !gj.features.length) return '';
     var l = gj.features[0].properties.level;
-    return l === 'country' ? 'province' : (l || '');
+    if (l === 'country') return 'province';
+    if (l === 'township') return 'township';
+    return l || '';
   }
 
   function canDrill(lv) {
-    return lv === 'province' || lv === 'city';
+    return lv === 'province' || lv === 'city' || lv === 'district';
   }
 
   function labelSize(lv) {
-    return lv === 'district' ? 9 : lv === 'city' ? 11 : 13;
+    if (lv === 'township') return 7;
+    if (lv === 'district') return 9;
+    if (lv === 'city') return 11;
+    return 13;
   }
 
   function findFeature(gj, name) {
@@ -287,9 +292,12 @@
         if (p.componentType !== 'geo') return;
         var curGj = renderMap._gj;
         var curLv = renderMap._lv;
-        if (!curGj || !canDrill(curLv)) return;
+        if (!curGj) return;
         var feat = findFeature(curGj, p.name);
-        if (feat) {
+        if (!feat) return;
+        if (curLv === 'district') {
+          drillDownToTownship(feat.properties.adcode, feat.properties.name);
+        } else if (canDrill(curLv)) {
           drillDown(feat.properties.adcode, feat.properties.name);
         }
       });
@@ -319,6 +327,24 @@
     } catch (e) {
       alert('无法加载 "' + name + '" 的地图数据。\n该区域暂无下级行政区数据。');
       console.error('Drill-down failed:', e);
+    } finally {
+      hideLoading();
+    }
+  }
+
+  async function drillDownToTownship(adcode, name) {
+    if (state.loading) return;
+    showLoading();
+    try {
+      var gj = await loadOSMTownships(name);
+      state.navStack.push({ adcode: adcode, name: name, geoJSON: gj });
+      state.currentIndex = state.navStack.length - 1;
+      renderMap(gj, adcode);
+      updateBreadcrumb();
+      fadeInfoTip();
+    } catch (e) {
+      alert('"' + name + '" 暂无乡镇级数据。\nOSM 尚未覆盖该区域的乡镇边界。');
+      console.error('Township drill failed:', e);
     } finally {
       hideLoading();
     }
