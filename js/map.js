@@ -89,6 +89,111 @@
     return json;
   }
 
+  function pointDist(a, b) {
+    var dx = a[0] - b[0];
+    var dy = a[1] - b[1];
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Stitch OSM ways into closed rings by matching endpoints (~100m tolerance)
+  function stitchWaysIntoRings(ways) {
+    if (ways.length === 0) return [];
+    if (ways.length === 1) {
+      var ring = ways[0].map(function(p) { return [p[0], p[1]]; });
+      var f = ring[0], l = ring[ring.length - 1];
+      if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
+      return [ring];
+    }
+
+    var used = new Array(ways.length).fill(false);
+    var eps = ways.map(function(w) {
+      return { start: w[0], end: w[w.length - 1] };
+    });
+    var rings = [];
+    var TOL = 0.001;
+
+    function findMatch(pt) {
+      var best = -1, bestD = TOL, rev = false;
+      for (var i = 0; i < ways.length; i++) {
+        if (used[i]) continue;
+        var ds = pointDist(pt, eps[i].start);
+        var de = pointDist(pt, eps[i].end);
+        if (ds < bestD) { best = i; bestD = ds; rev = false; }
+        if (de < bestD) { best = i; bestD = de; rev = true; }
+      }
+      return best >= 0 ? { index: best, reverse: rev } : null;
+    }
+
+    // Snip duplicate endpoint when appending
+    function appendRing(ring, way, rev) {
+      var i, p;
+      if (rev) {
+        for (i = way.length - 1; i >= 0; i--) {
+          p = [way[i][0], way[i][1]];
+          var last = ring[ring.length - 1];
+          if (pointDist(p, last) < TOL) continue;
+          ring.push(p);
+        }
+      } else {
+        for (i = 0; i < way.length; i++) {
+          p = [way[i][0], way[i][1]];
+          var last = ring[ring.length - 1];
+          if (pointDist(p, last) < TOL) continue;
+          ring.push(p);
+        }
+      }
+    }
+
+    function prependRing(ring, way, rev) {
+      var i, p;
+      if (rev) {
+        for (i = 0; i < way.length; i++) {
+          p = [way[i][0], way[i][1]];
+          if (pointDist(p, ring[0]) < TOL) continue;
+          ring.unshift(p);
+        }
+      } else {
+        for (i = way.length - 1; i >= 0; i--) {
+          p = [way[i][0], way[i][1]];
+          if (pointDist(p, ring[0]) < TOL) continue;
+          ring.unshift(p);
+        }
+      }
+    }
+
+    for (var si = 0; si < ways.length; si++) {
+      if (used[si]) continue;
+      var ring = [];
+      for (var k = 0; k < ways[si].length; k++) {
+        ring.push([ways[si][k][0], ways[si][k][1]]);
+      }
+      used[si] = true;
+
+      // Grow tail
+      var grown = true;
+      while (grown) {
+        grown = false;
+        var m = findMatch(ring[ring.length - 1]);
+        if (m) { used[m.index] = true; appendRing(ring, ways[m.index], m.reverse); grown = true; }
+      }
+      // Grow head
+      grown = true;
+      while (grown) {
+        grown = false;
+        var m = findMatch(ring[0]);
+        if (m) { used[m.index] = true; prependRing(ring, ways[m.index], m.reverse); grown = true; }
+      }
+
+      // Close ring
+      var f = ring[0], l = ring[ring.length - 1];
+      if (f[0] !== l[0] || f[1] !== l[1]) ring.push([f[0], f[1]]);
+
+      if (ring.length >= 4) rings.push(ring);
+    }
+
+    return rings;
+  }
+
   function overpassToGeoJSON(data) {
     var features = [];
     var elements = data.elements || [];
@@ -99,31 +204,28 @@
       if (!tags.name || tags.admin_level !== '8') continue;
 
       var members = el.members || [];
-      var rings = [];
-
+      // Collect outer-way coordinate arrays
+      var wayCoords = [];
       for (var j = 0; j < members.length; j++) {
         var m = members[j];
-        if (m.role !== 'outer') continue;
+        if (m.role !== 'outer' || m.type !== 'way') continue;
         var geom = m.geometry;
         if (!geom || geom.length < 3) continue;
-
         var coords = [];
         for (var k = 0; k < geom.length; k++) {
           coords.push([geom[k].lon, geom[k].lat]);
         }
-        var first = coords[0];
-        var last = coords[coords.length - 1];
-        if (first[0] !== last[0] || first[1] !== last[1]) {
-          coords.push([first[0], first[1]]);
-        }
-        rings.push(coords);
+        wayCoords.push(coords);
       }
 
+      if (wayCoords.length === 0) continue;
+
+      var rings = stitchWaysIntoRings(wayCoords);
       if (rings.length === 0) continue;
 
       var geometry;
       if (rings.length === 1) {
-        geometry = { type: 'Polygon', coordinates: rings };
+        geometry = { type: 'Polygon', coordinates: [rings[0]] };
       } else {
         geometry = { type: 'MultiPolygon', coordinates: rings.map(function(r) { return [r]; }) };
       }
@@ -292,9 +394,7 @@
 
   function renderMap(gj, adcode) {
     var mapName = String(adcode);
-    if (!echarts.getMap(mapName)) {
-      echarts.registerMap(mapName, gj);
-    }
+    echarts.registerMap(mapName, gj);
 
     // Stash on function object so click handler can reference current data
     renderMap._gj = gj;
