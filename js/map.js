@@ -74,7 +74,7 @@
   async function loadGeoJSON(adcode) {
     if (state.geoCache.has(adcode)) return state.geoCache.get(adcode);
     var url = CONFIG.DATA_URL + adcode + '_full.json';
-    var resp = await fetch(url);
+    var resp = await fetch(url, { referrerPolicy: 'no-referrer' });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     var json = await resp.json();
     state.geoCache.set(adcode, json);
