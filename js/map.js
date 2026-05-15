@@ -138,12 +138,16 @@
     return { type: 'FeatureCollection', features: features };
   }
 
+  function escapeOverpass(str) {
+    return str.replace(/[\\";\[\]]/g, '\\$&');
+  }
+
   async function loadOSMTownships(countyName) {
     if (state.townshipGeoCache.has(countyName)) {
       return state.townshipGeoCache.get(countyName);
     }
     var query = '[out:json][timeout:30];' +
-      'area["name"="' + countyName + '"][admin_level=6][boundary=administrative];' +
+      'area["name"="' + escapeOverpass(countyName) + '"][admin_level=6][boundary=administrative];' +
       'rel[admin_level=8][boundary=administrative](area);' +
       'out geom;';
     var resp = await fetch(CONFIG.OVERPASS_URL, {
