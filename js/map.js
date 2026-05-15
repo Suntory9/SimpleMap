@@ -180,10 +180,24 @@
     var ls = labelSize(lv);
     var drill = canDrill(lv);
 
+    var TOWN_COLORS = [
+      '#fde0dd', '#fce4d6', '#fff3cd', '#e8f5e9', '#e3f2fd',
+      '#f3e5f5', '#fce4ec', '#e0f2f1', '#fff8e1', '#ede7f6'
+    ];
+    function townColor(name) {
+      var h = 0, i;
+      for (i = 0; i < name.length; i++) {
+        h = ((h << 5) - h) + name.charCodeAt(i);
+        h |= 0;
+      }
+      return TOWN_COLORS[Math.abs(h) % TOWN_COLORS.length];
+    }
+    var paletteFn = lv === 'township' ? townColor : colorFor;
+
     var regions = features.map(function (f) {
       return {
         name: f.properties.name,
-        itemStyle: { areaColor: colorFor(f.properties.name) }
+        itemStyle: { areaColor: paletteFn(f.properties.name) }
       };
     });
 
@@ -205,8 +219,12 @@
           var h = '<strong style="font-size:14px">' + p.name + '</strong>';
           var a = adcMap[p.name];
           if (a != null) h += '<br/>代码: ' + a;
-          h += '<br/><span style="color:#bbb;font-size:11px">' +
-               (drill ? '点击下钻' : '已是末级') + '</span>';
+          if (lv === 'township') {
+            h += '<br/><span style="color:#aaa;font-size:11px">乡镇级 (OSM)</span>';
+          } else {
+            h += '<br/><span style="color:#bbb;font-size:11px">' +
+                 (drill ? '点击下钻' : '已是末级') + '</span>';
+          }
           return h;
         }
       },
@@ -225,7 +243,7 @@
         itemStyle: {
           areaColor: '#e8e8e8',
           borderColor: '#ffffff',
-          borderWidth: 1.5
+          borderWidth: lv === 'township' ? 1 : 1.5
         },
         emphasis: {
           label: {
