@@ -8,7 +8,8 @@
   var CONFIG = {
     DATA_URL: 'https://geo.datav.aliyun.com/areas_v3/bound/',
     CHINA_ADCODE: '100000',
-    CHINA_NAME: '中国'
+    CHINA_NAME: '中国',
+    OVERPASS_URL: 'https://overpass.kumi.systems/api/interpreter'
   };
 
   var COLORS = [
@@ -24,7 +25,8 @@
     currentIndex: -1,
     geoCache: new Map(),
     showHighways: true,
-    loading: false
+    loading: false,
+    townshipGeoCache: new Map()
   };
 
   // Hash name to a stable color from the palette
@@ -79,6 +81,85 @@
     var json = await resp.json();
     state.geoCache.set(adcode, json);
     return json;
+  }
+
+  function overpassToGeoJSON(data) {
+    var features = [];
+    var elements = data.elements || [];
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (el.type !== 'relation') continue;
+      var tags = el.tags || {};
+      if (!tags.name || tags.admin_level !== '8') continue;
+
+      var members = el.members || [];
+      var rings = [];
+
+      for (var j = 0; j < members.length; j++) {
+        var m = members[j];
+        if (m.role !== 'outer') continue;
+        var geom = m.geometry;
+        if (!geom || geom.length < 3) continue;
+
+        var coords = [];
+        for (var k = 0; k < geom.length; k++) {
+          coords.push([geom[k].lon, geom[k].lat]);
+        }
+        var first = coords[0];
+        var last = coords[coords.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          coords.push([first[0], first[1]]);
+        }
+        rings.push(coords);
+      }
+
+      if (rings.length === 0) continue;
+
+      var geometry;
+      if (rings.length === 1) {
+        geometry = { type: 'Polygon', coordinates: rings };
+      } else {
+        geometry = { type: 'MultiPolygon', coordinates: rings.map(function(r) { return [r]; }) };
+      }
+
+      var adcode = tags['ref:admin:CN:nbs'] || tags['ref:admin:CN:mca'] || String(el.id);
+
+      features.push({
+        type: 'Feature',
+        properties: {
+          name: tags.name,
+          adcode: adcode,
+          level: 'township',
+          adminType: tags['admin_type:CN'] || ''
+        },
+        geometry: geometry
+      });
+    }
+    return { type: 'FeatureCollection', features: features };
+  }
+
+  async function loadOSMTownships(countyName) {
+    if (state.townshipGeoCache.has(countyName)) {
+      return state.townshipGeoCache.get(countyName);
+    }
+    var query = '[out:json][timeout:30];' +
+      'area["name"="' + countyName + '"][admin_level=6][boundary=administrative];' +
+      'rel[admin_level=8][boundary=administrative](area);' +
+      'out geom;';
+    var resp = await fetch(CONFIG.OVERPASS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: query,
+      referrerPolicy: 'no-referrer'
+    });
+    if (!resp.ok) throw new Error('Overpass HTTP ' + resp.status);
+    var data = await resp.json();
+    var geoJSON = overpassToGeoJSON(data);
+    if (geoJSON.features.length === 0) {
+      throw new Error('No townships found for ' + countyName);
+    }
+    state.townshipGeoCache.set(countyName, geoJSON);
+    return geoJSON;
   }
 
   // ---------- ECharts option builder ----------
