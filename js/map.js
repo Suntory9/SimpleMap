@@ -445,6 +445,29 @@
     state.chart.setOption(opt, true);
   }
 
+  // ---------- Background prefetch ----------
+
+  function prefetchTownships(features) {
+    if (!features || !features.length) return;
+    var names = [];
+    for (var i = 0; i < features.length; i++) {
+      var n = features[i].properties.name;
+      if (!state.townshipGeoCache.has(n)) names.push(n);
+    }
+    if (names.length === 0) return;
+
+    var LIMIT = 3;
+    var idx = 0;
+    function next() {
+      if (idx >= names.length) return;
+      var batch = names.slice(idx, idx + LIMIT);
+      idx += LIMIT;
+      Promise.allSettled(batch.map(function (n) { return loadOSMTownships(n); }))
+        .then(function () { setTimeout(next, 200); });
+    }
+    setTimeout(next, 100);
+  }
+
   // ---------- Navigation ----------
 
   async function drillDown(adcode, name) {
@@ -457,6 +480,11 @@
       renderMap(gj, adcode);
       updateBreadcrumb();
       fadeInfoTip();
+      // Background prefetch township data for counties at this level
+      var lv = getLevel(gj);
+      if (lv === 'city') {
+        prefetchTownships(gj.features);
+      }
     } catch (e) {
       alert('无法加载 "' + name + '" 的地图数据。\n该区域暂无下级行政区数据。');
       console.error('Drill-down failed:', e);
@@ -467,7 +495,8 @@
 
   async function drillDownToTownship(adcode, name) {
     if (state.loading) return;
-    showLoading();
+    var cached = state.townshipGeoCache.has(name);
+    if (!cached) showLoading();
     try {
       var gj = await loadOSMTownships(name);
       state.navStack.push({ adcode: adcode, name: name, geoJSON: gj });
